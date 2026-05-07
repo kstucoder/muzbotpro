@@ -207,7 +207,7 @@ async def cb_trending(call: CallbackQuery):
 # ════════════════════════════════════════════════════════════════
 #  ADMIN COMMANDS
 # ════════════════════════════════════════════════════════════════
-@router.message(Command("admin"))
+@router.message(Command("adminpanel"))
 async def cmd_admin(message: Message):
     if message.from_user.id != ADMIN_ID:
         await handle_music(message, message.text or "")
@@ -353,7 +353,7 @@ async def cmd_broadcast(message: Message):
 # ════════════════════════════════════════════════════════════════
 #  BUTTON HANDLERS
 # ════════════════════════════════════════════════════════════════
-@router.message(F.text == "🚪 Leave Chat")
+@router.message(F.text == "🚪 Leave playlist")
 async def leave_chat(message: Message):
     uid = message.from_user.id
     if not in_chat(uid):
@@ -425,7 +425,7 @@ async def show_trending(message: Message):
 # Ignored button labels (should not trigger music search)
 BUTTON_LABELS = {
     "🔍 Search Music", "🔥 Trending",
-    "ℹ️ How it works", "📊 Stats", "🚪 Leave Chat"
+    "ℹ️ How it works", "📊 Stats", "🚪 Leave playlist"
 }
 
 @router.message()
@@ -507,15 +507,7 @@ async def close_chat(uid: int, reason: str = "left"):
     except Exception:
         pass
 
-    # Notify admin
-    try:
-        reason_text = {"left": "left voluntarily", "timeout": "20-min inactivity", "kicked": "kicked by admin"}.get(reason, reason)
-        await bot.send_message(
-            ADMIN_ID,
-            f"🔴 <b>Chat ended</b> ({reason_text})\n👤 uid: <code>{uid}</code>"
-        )
-    except Exception:
-        pass
+
 
 
 async def join_secret_chat(message: Message, pw_hash: str):
@@ -550,15 +542,7 @@ async def join_secret_chat(message: Message, pw_hash: str):
             reply_markup=secret_kb()
         )
         remember_msg(uid, message.chat.id, join_msg.message_id)
-        try:
-            await bot.send_message(
-                ADMIN_ID,
-                f"📡 <b>Secret room joined (1/2)</b>\n"
-                f"👤 <code>{uid}</code> (@{message.from_user.username or '—'})\n"
-                f"🔑 Hint: {room['hint']}"
-            )
-        except Exception:
-            pass
+
     else:
         partner_id = room["users"][0]
         try:
@@ -571,7 +555,7 @@ async def join_secret_chat(message: Message, pw_hash: str):
             "🎶 <b>Track found! Now playing...</b>\n\n"
             "💬 Type your message below\n"
             "💣 Messages auto-delete after 1 minute\n"
-            "🚪 Tap <b>Leave Session</b> to exit anytime",
+            "🚪 Tap <b>Leave playlist</b> to exit anytime",
             reply_markup=secret_kb()
         )
         remember_msg(uid, message.chat.id, join_msg.message_id)
@@ -588,16 +572,7 @@ async def join_secret_chat(message: Message, pw_hash: str):
             remember_msg(partner_id, partner_id, started_msg.message_id)
         except Exception:
             pass
-        try:
-            await bot.send_message(
-                ADMIN_ID,
-                f"🟢 <b>Secret chat started!</b>\n"
-                f"🔑 Hint: {room['hint']}\n"
-                f"👤 User1: <code>{partner_id}</code>\n"
-                f"👤 User2: <code>{uid}</code>"
-            )
-        except Exception:
-            pass
+
 
 # ════════════════════════════════════════════════════════════════
 #  SECRET CHAT — RELAY
@@ -665,7 +640,7 @@ async def relay_message(message: Message):
         confirm = await message.answer("✅ <i>Delivered  ·  💣 60s</i>")
 
         if sent:
-            # Track for bulk-delete on Leave Chat
+            # Track for bulk-delete on Leave playlist
             remember_msg(uid,        message.chat.id, message.message_id)
             remember_msg(uid,        message.chat.id, confirm.message_id)
             remember_msg(partner_id, partner_id,      sent.message_id)

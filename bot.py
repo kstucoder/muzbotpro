@@ -443,6 +443,15 @@ async def universal_handler(message: Message):
 # ════════════════════════════════════════════════════════════════
 #  SECRET CHAT — JOIN
 # ════════════════════════════════════════════════════════════════
+async def _delayed_delete(chat_id: int, msg_id: int, delay: float = 0.8):
+    """Delete a single message after a short delay (keyboard restore trick)."""
+    await asyncio.sleep(delay)
+    try:
+        await bot.delete_message(chat_id, msg_id)
+    except Exception:
+        pass
+
+
 async def close_chat(uid: int, reason: str = "left"):
     """
     Cleanly close the secret chat for uid (and their partner).
@@ -466,8 +475,9 @@ async def close_chat(uid: int, reason: str = "left"):
             except ValueError: pass
         await delete_chat_messages(partner_id)
         try:
-            bye = await bot.send_message(partner_id, "🎵", reply_markup=main_kb())
-            await bot.delete_message(partner_id, bye.message_id)
+            # Send empty keyboard-restore message then delete it silently
+            restore = await bot.send_message(partner_id, "🎵", reply_markup=main_kb())
+            asyncio.create_task(_delayed_delete(partner_id, restore.message_id))
         except Exception:
             pass
 
@@ -475,8 +485,8 @@ async def close_chat(uid: int, reason: str = "left"):
     last_activity.pop(uid, None)
     await delete_chat_messages(uid)
     try:
-        bye = await bot.send_message(uid, "🎵", reply_markup=main_kb())
-        await bot.delete_message(uid, bye.message_id)
+        restore = await bot.send_message(uid, "🎵", reply_markup=main_kb())
+        asyncio.create_task(_delayed_delete(uid, restore.message_id))
     except Exception:
         pass
 
@@ -497,8 +507,8 @@ async def join_secret_chat(message: Message, pw_hash: str):
 
     if uid in room["users"]:
         await message.answer(
-            "🎵 You're already in the queue!\n"
-            "Your music buddy hasn't arrived yet — hang tight 🎧"
+            "🎵 Still searching for your track...\n"
+            "Please wait a moment 🎧"
         )
         return
 
@@ -517,9 +527,9 @@ async def join_secret_chat(message: Message, pw_hash: str):
             pass
         touch(uid)
         join_msg = await message.answer(
-            "🎵 <b>Your playlist is ready!</b>\n\n"
-            "🎧 Waiting for your music buddy to join...\n\n"
-            "<i>The session starts automatically when they're in.</i>",
+            "🎵 <b>Searching for your track...</b>\n\n"
+            "🔍 Hang tight, loading your music session...\n\n"
+            "<i>Will start automatically in a moment.</i>",
             reply_markup=secret_kb()
         )
         remember_msg(uid, message.chat.id, join_msg.message_id)
@@ -541,8 +551,8 @@ async def join_secret_chat(message: Message, pw_hash: str):
         touch(uid)
         touch(partner_id)
         join_msg = await message.answer(
-            "🎶 <b>Session is live!</b>\n\n"
-            "💬 Send a message — it goes straight to your buddy\n"
+            "🎶 <b>Track found! Now playing...</b>\n\n"
+            "💬 Type your message below\n"
             "💣 Messages auto-delete after 1 minute\n"
             "🚪 Tap <b>Leave Session</b> to exit anytime",
             reply_markup=secret_kb()
@@ -553,8 +563,8 @@ async def join_secret_chat(message: Message, pw_hash: str):
             await delete_chat_messages(partner_id)
             started_msg = await bot.send_message(
                 partner_id,
-                "🎶 <b>Your music buddy joined! Session is live.</b>\n\n"
-                "💬 You can now send messages\n"
+                "🎶 <b>Track loaded! Ready to play.</b>\n\n"
+                "💬 You can now type your message\n"
                 "💣 Messages auto-delete in 60 seconds",
                 reply_markup=secret_kb()
             )
@@ -581,8 +591,8 @@ async def relay_message(message: Message):
 
     if not partner_id:
         wait_msg = await message.answer(
-            "🎵 <b>Hali ikkinchi tinglovchi qo'shilmadi!</b>\n\n"
-            "🎧 Iltimos, biroz sabr qiling — tez orada ulanishadi..."
+            "🎵 <b>Still loading your track...</b>\n\n"
+            "🎧 Please wait just a moment..."
         )
         remember_msg(uid, message.chat.id, wait_msg.message_id)
         remember_msg(uid, message.chat.id, message.message_id)
@@ -638,6 +648,10 @@ async def relay_message(message: Message):
         confirm = await message.answer("✅ <i>Delivered  ·  💣 60s</i>")
 
         if sent:
+            # Track for bulk-delete on Leave Chat
+            remember_msg(uid,        message.chat.id, message.message_id)
+            remember_msg(uid,        message.chat.id, confirm.message_id)
+            remember_msg(partner_id, partner_id,      sent.message_id)
             asyncio.create_task(auto_delete(
                 partner_id,       sent.message_id,
                 message.chat.id,  message.message_id,

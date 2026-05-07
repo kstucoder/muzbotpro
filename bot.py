@@ -9,7 +9,7 @@ import logging
 import os
 import hashlib
 import aiohttp
-from datetime import datetime
+from datetime import datetime, timezone
 
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.types import (
@@ -27,7 +27,8 @@ from aiogram.client.default import DefaultBotProperties
 # ──────────────────────────── CONFIG ────────────────────────────
 BOT_TOKEN         = os.environ["BOT_TOKEN"]
 ADMIN_ID          = int(os.environ["ADMIN_ID"])
-AUTO_DELETE_DELAY = 60
+AUTO_DELETE_DELAY  = 60
+INACTIVITY_TIMEOUT = 20 * 60   # 20 minutes in seconds
 
 logging.basicConfig(
     level=logging.INFO,
@@ -39,6 +40,10 @@ log = logging.getLogger(__name__)
 pairs: dict[str, dict]          = {}
 active_sessions: dict[int, str] = {}
 recent_searches: list[str]      = []   # last 5 global queries
+# uid -> list of (chat_id, msg_id) to delete on exit
+chat_messages: dict[int, list]  = {}
+# uid -> timestamp of last activity
+last_activity: dict[int, float] = {}
 stats = {"messages": 0, "music": 0, "users": set()}
 
 # ──────────────────────────── HELPERS ───────────────────────────
@@ -56,6 +61,23 @@ def partner_of(uid: int) -> int | None:
 
 def in_chat(uid: int) -> bool:
     return uid in active_sessions
+
+def remember_msg(uid: int, chat_id: int, msg_id: int):
+    """Store a message ID so it can be bulk-deleted on chat exit."""
+    chat_messages.setdefault(uid, []).append((chat_id, msg_id))
+
+def touch(uid: int):
+    """Update last activity timestamp."""
+    import time
+    last_activity[uid] = time.time()
+
+async def delete_chat_messages(uid: int):
+    """Delete all stored chat messages for a user."""
+    for chat_id, msg_id in chat_messages.pop(uid, []):
+        try:
+            await bot.delete_message(chat_id, msg_id)
+        except Exception:
+            pass
 
 def track_search(query: str):
     """Keep last 5 unique searches for trending display."""
@@ -327,37 +349,7 @@ async def leave_chat(message: Message):
         await message.delete()
     except Exception:
         pass
-    pw_hash    = active_sessions.pop(uid, None)
-    partner_id = None
-    if pw_hash and pw_hash in pairs:
-        partner_id = next((u for u in pairs[pw_hash]["users"] if u != uid), None)
-        try:
-            pairs[pw_hash]["users"].remove(uid)
-        except ValueError:
-            pass
-    await bot.send_message(uid, "🎵 Type a song name to search music", reply_markup=main_kb())
-    if partner_id:
-        active_sessions.pop(partner_id, None)
-        if pw_hash and pw_hash in pairs:
-            try:
-                pairs[pw_hash]["users"].remove(partner_id)
-            except ValueError:
-                pass
-        try:
-            await bot.send_message(
-                partner_id,
-                "🔴 Disconnected.\n\nType any song to find music 🎵",
-                reply_markup=main_kb()
-            )
-        except Exception:
-            pass
-    try:
-        await bot.send_message(
-            ADMIN_ID,
-            f"🔴 <b>Chat ended</b>\n👤 Left: <code>{uid}</code>"
-        )
-    except Exception:
-        pass
+    await close_chat(uid, reason="left")
 
 @router.message(F.text == "🔍 Search Music")
 async def btn_search(message: Message):
@@ -451,6 +443,54 @@ async def universal_handler(message: Message):
 # ════════════════════════════════════════════════════════════════
 #  SECRET CHAT — JOIN
 # ════════════════════════════════════════════════════════════════
+async def close_chat(uid: int, reason: str = "left"):
+    """
+    Cleanly close the secret chat for uid (and their partner).
+    reason: 'left' | 'timeout' | 'kicked'
+    Deletes all stored chat messages for both sides.
+    """
+    import time
+    pw_hash    = active_sessions.pop(uid, None)
+    partner_id = None
+    if pw_hash and pw_hash in pairs:
+        partner_id = next((u for u in pairs[pw_hash]["users"] if u != uid), None)
+        try: pairs[pw_hash]["users"].remove(uid)
+        except ValueError: pass
+
+    # Clean up partner
+    if partner_id:
+        active_sessions.pop(partner_id, None)
+        last_activity.pop(partner_id, None)
+        if pw_hash and pw_hash in pairs:
+            try: pairs[pw_hash]["users"].remove(partner_id)
+            except ValueError: pass
+        await delete_chat_messages(partner_id)
+        try:
+            bye = await bot.send_message(partner_id, "🎵", reply_markup=main_kb())
+            await bot.delete_message(partner_id, bye.message_id)
+        except Exception:
+            pass
+
+    # Clean up self
+    last_activity.pop(uid, None)
+    await delete_chat_messages(uid)
+    try:
+        bye = await bot.send_message(uid, "🎵", reply_markup=main_kb())
+        await bot.delete_message(uid, bye.message_id)
+    except Exception:
+        pass
+
+    # Notify admin
+    try:
+        reason_text = {"left": "left voluntarily", "timeout": "20-min inactivity", "kicked": "kicked by admin"}.get(reason, reason)
+        await bot.send_message(
+            ADMIN_ID,
+            f"🔴 <b>Chat ended</b> ({reason_text})\n👤 uid: <code>{uid}</code>"
+        )
+    except Exception:
+        pass
+
+
 async def join_secret_chat(message: Message, pw_hash: str):
     uid  = message.from_user.id
     room = pairs[pw_hash]
@@ -475,12 +515,14 @@ async def join_secret_chat(message: Message, pw_hash: str):
             await message.delete()
         except Exception:
             pass
-        await message.answer(
+        touch(uid)
+        join_msg = await message.answer(
             "🔐 <b>You've entered the secret chat room.</b>\n\n"
             "⏳ Waiting for your partner to enter the same code...\n\n"
             "<i>The chat begins automatically when they join.</i>",
             reply_markup=secret_kb()
         )
+        remember_msg(uid, message.chat.id, join_msg.message_id)
         try:
             await bot.send_message(
                 ADMIN_ID,
@@ -496,20 +538,26 @@ async def join_secret_chat(message: Message, pw_hash: str):
             await message.delete()
         except Exception:
             pass
-        await message.answer(
+        touch(uid)
+        touch(partner_id)
+        join_msg = await message.answer(
             "🔐 <b>Chat started!</b>\n\n"
             "💬 Send a message — it goes straight to your partner\n"
             "💣 Messages auto-delete after 1 minute\n"
             "🚪 Tap <b>Leave Chat</b> to exit anytime",
             reply_markup=secret_kb()
         )
+        remember_msg(uid, message.chat.id, join_msg.message_id)
         try:
-            await bot.send_message(
+            # Delete partner's waiting message first
+            await delete_chat_messages(partner_id)
+            started_msg = await bot.send_message(
                 partner_id,
                 "🟢 <b>Your partner joined! Chat is live.</b>\n\n"
                 "💬 You can now send messages\n"
                 "💣 Messages auto-delete in 60 seconds"
             )
+            remember_msg(partner_id, partner_id, started_msg.message_id)
         except Exception:
             pass
         try:
@@ -538,6 +586,8 @@ async def relay_message(message: Message):
         return
 
     stats["messages"] += 1
+    touch(uid)
+    touch(partner_id)
     sent = None
     BURN = "\n\n<i>💣 Auto-deletes in 60s</i>"
 
@@ -774,8 +824,24 @@ async def handle_music(message: Message, query: str):
 # ════════════════════════════════════════════════════════════════
 #  MAIN
 # ════════════════════════════════════════════════════════════════
+async def inactivity_watcher():
+    """Check every 60s; close chats idle for INACTIVITY_TIMEOUT seconds."""
+    import time
+    while True:
+        await asyncio.sleep(60)
+        now  = time.time()
+        dead = [
+            uid for uid, ts in list(last_activity.items())
+            if now - ts > INACTIVITY_TIMEOUT and uid in active_sessions
+        ]
+        for uid in dead:
+            log.info(f"Inactivity timeout for uid={uid}")
+            await close_chat(uid, reason="timeout")
+
+
 async def main():
     log.info("🚀 VibeMusic Bot started (Deezer + iTunes / SecretChat)")
+    asyncio.create_task(inactivity_watcher())
     await dp.start_polling(bot, allowed_updates=["message", "callback_query"])
 
 if __name__ == "__main__":

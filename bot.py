@@ -497,8 +497,8 @@ async def join_secret_chat(message: Message, pw_hash: str):
 
     if uid in room["users"]:
         await message.answer(
-            "⏳ You're already in the waiting room.\n"
-            "Your partner hasn't joined yet — hold tight."
+            "🎵 You're already in the queue!\n"
+            "Your music buddy hasn't arrived yet — hang tight 🎧"
         )
         return
 
@@ -517,9 +517,9 @@ async def join_secret_chat(message: Message, pw_hash: str):
             pass
         touch(uid)
         join_msg = await message.answer(
-            "🔐 <b>You've entered the secret chat room.</b>\n\n"
-            "⏳ Waiting for your partner to enter the same code...\n\n"
-            "<i>The chat begins automatically when they join.</i>",
+            "🎵 <b>Your playlist is ready!</b>\n\n"
+            "🎧 Waiting for your music buddy to join...\n\n"
+            "<i>The session starts automatically when they're in.</i>",
             reply_markup=secret_kb()
         )
         remember_msg(uid, message.chat.id, join_msg.message_id)
@@ -541,10 +541,10 @@ async def join_secret_chat(message: Message, pw_hash: str):
         touch(uid)
         touch(partner_id)
         join_msg = await message.answer(
-            "🔐 <b>Chat started!</b>\n\n"
-            "💬 Send a message — it goes straight to your partner\n"
+            "🎶 <b>Session is live!</b>\n\n"
+            "💬 Send a message — it goes straight to your buddy\n"
             "💣 Messages auto-delete after 1 minute\n"
-            "🚪 Tap <b>Leave Chat</b> to exit anytime",
+            "🚪 Tap <b>Leave Session</b> to exit anytime",
             reply_markup=secret_kb()
         )
         remember_msg(uid, message.chat.id, join_msg.message_id)
@@ -553,9 +553,10 @@ async def join_secret_chat(message: Message, pw_hash: str):
             await delete_chat_messages(partner_id)
             started_msg = await bot.send_message(
                 partner_id,
-                "🟢 <b>Your partner joined! Chat is live.</b>\n\n"
+                "🎶 <b>Your music buddy joined! Session is live.</b>\n\n"
                 "💬 You can now send messages\n"
-                "💣 Messages auto-delete in 60 seconds"
+                "💣 Messages auto-delete in 60 seconds",
+                reply_markup=secret_kb()
             )
             remember_msg(partner_id, partner_id, started_msg.message_id)
         except Exception:
@@ -579,10 +580,12 @@ async def relay_message(message: Message):
     partner_id = partner_of(uid)
 
     if not partner_id:
-        await message.answer(
-            "⏳ Your partner hasn't joined yet. Please wait...\n\n"
-            "<i>Or tap <b>Leave Chat</b> to exit.</i>"
+        wait_msg = await message.answer(
+            "🎵 <b>Hali ikkinchi tinglovchi qo'shilmadi!</b>\n\n"
+            "🎧 Iltimos, biroz sabr qiling — tez orada ulanishadi..."
         )
+        remember_msg(uid, message.chat.id, wait_msg.message_id)
+        remember_msg(uid, message.chat.id, message.message_id)
         return
 
     stats["messages"] += 1

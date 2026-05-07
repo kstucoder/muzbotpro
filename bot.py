@@ -134,8 +134,7 @@ async def cmd_start(message: Message):
         "  • <code>Blinding Lights</code>\n"
         "  • <code>Drake God's Plan</code>\n"
         "  • <code>Coldplay Yellow</code>\n"
-        "━━━━━━━━━━━━━━━━━━\n\n"
-        "🔐 <i>Have a secret chat code? Just type it.</i>",
+        "━━━━━━━━━━━━━━━━━━",
         reply_markup=main_kb()
     )
 
@@ -333,8 +332,7 @@ async def leave_chat(message: Message):
         except ValueError:
             pass
     await message.answer(
-        "👋 <b>You left the secret chat.</b>\n\n"
-        "Type any song name to find music 🎵",
+        "👋 You left.\n\nType any song name to find music 🎵",
         reply_markup=main_kb()
     )
     if partner_id:
@@ -347,7 +345,7 @@ async def leave_chat(message: Message):
         try:
             await bot.send_message(
                 partner_id,
-                "🔴 <b>Your partner left the chat.</b>\n\nType any song to find music 🎵",
+                "🔴 Disconnected.\n\nType any song to find music 🎵",
                 reply_markup=main_kb()
             )
         except Exception:
@@ -392,7 +390,6 @@ async def btn_stats(message: Message):
     await message.answer(
         "📊 <b>Bot Statistics</b>\n\n"
         f"🎵 Songs found: <b>{stats['music']}</b>\n"
-        f"📨 Messages relayed: <b>{stats['messages']}</b>\n"
         f"🌍 Unique users: <b>{len(stats['users'])}</b>\n\n"
         "🔥 <b>Recent Searches:</b>\n"
         f"{trending_str}"

@@ -121,6 +121,4 @@ secret_bot/
 - `yt-dlp --update` bilan yangilang
 - VPN kerak bo'lishi mumkin ba'zi qo'shiqlarda
 
----
 
-*QarDTU StartUp © 2025*

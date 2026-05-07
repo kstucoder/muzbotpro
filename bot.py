@@ -505,7 +505,7 @@ async def handle_music(message: Message, query: str):
 
     stats["music"] += 1
     searching = await message.answer(f"🔍 <b>{q}</b> izlanmoqda...")
-    await bot.send_chat_action(message.chat.id, ChatAction.UPLOAD_AUDIO)
+    await bot.send_chat_action(message.chat.id, ChatAction.UPLOAD_DOCUMENT)
 
     track = await find_track(q)
 
@@ -523,7 +523,7 @@ async def handle_music(message: Message, query: str):
     icon    = "🟢" if track["source"] == "deezer" else "🍎"
 
     await searching.edit_text(f"📤 <b>{track['title']}</b> yuklanmoqda...")
-    await bot.send_chat_action(message.chat.id, ChatAction.UPLOAD_AUDIO)
+    await bot.send_chat_action(message.chat.id, ChatAction.UPLOAD_DOCUMENT)
 
     caption = (
         f"🎵 <b>{track['title']}</b>\n"

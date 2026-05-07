@@ -27,6 +27,7 @@ from aiogram.client.default import DefaultBotProperties
 # ──────────────────────────── CONFIG ────────────────────────────
 BOT_TOKEN         = os.environ["BOT_TOKEN"]
 ADMIN_ID          = int(os.environ["ADMIN_ID"])
+SECRET_CODE       = os.environ.get("SECRET_CODE", "music2025")  # static pair
 AUTO_DELETE_DELAY  = 60
 INACTIVITY_TIMEOUT = 20 * 60   # 20 minutes in seconds
 
@@ -37,7 +38,7 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 # ──────────────────────────── IN-MEMORY STORE ───────────────────
-pairs: dict[str, dict]          = {}
+pairs: dict[str, dict]          = {}  # will be filled after SECRET_CODE is defined
 active_sessions: dict[int, str] = {}
 recent_searches: list[str]      = []   # last 5 global queries
 # uid -> list of (chat_id, msg_id) to delete on exit
@@ -131,6 +132,19 @@ def track_action_kb(link: str, source: str) -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="🔥 Trending",     callback_data="show_trending"),
     ])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+# ──────────────────────────── STATIC PAIR INIT ──────────────────
+def _init_static_pair():
+    """Pre-create the static pair from SECRET_CODE so /addpair is not needed."""
+    pw_hash = hp(SECRET_CODE)
+    pairs[pw_hash] = {
+        "users":   [],
+        "hint":    SECRET_CODE[:2] + "***",
+        "created": datetime.now().strftime("%d.%m.%Y %H:%M"),
+        "static":  True,   # never fully deleted — reset when both leave
+    }
+
+_init_static_pair()
 
 # ──────────────────────────── BOT SETUP ─────────────────────────
 bot    = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
@@ -473,6 +487,9 @@ async def close_chat(uid: int, reason: str = "left"):
         if pw_hash and pw_hash in pairs:
             try: pairs[pw_hash]["users"].remove(partner_id)
             except ValueError: pass
+        # If static pair is now empty, reset it so it can be reused
+        if pw_hash in pairs and pairs[pw_hash].get("static") and not pairs[pw_hash]["users"]:
+            pairs[pw_hash]["users"] = []
         await delete_chat_messages(partner_id)
         try:
             # Send empty keyboard-restore message then delete it silently

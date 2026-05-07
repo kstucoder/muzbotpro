@@ -323,6 +323,10 @@ async def leave_chat(message: Message):
     if not in_chat(uid):
         await message.answer("You are not in a chat.", reply_markup=main_kb())
         return
+    try:
+        await message.delete()
+    except Exception:
+        pass
     pw_hash    = active_sessions.pop(uid, None)
     partner_id = None
     if pw_hash and pw_hash in pairs:
@@ -331,10 +335,7 @@ async def leave_chat(message: Message):
             pairs[pw_hash]["users"].remove(uid)
         except ValueError:
             pass
-    await message.answer(
-        "👋 You left.\n\nType any song name to find music 🎵",
-        reply_markup=main_kb()
-    )
+    await bot.send_message(uid, "🎵 Type a song name to search music", reply_markup=main_kb())
     if partner_id:
         active_sessions.pop(partner_id, None)
         if pw_hash and pw_hash in pairs:
@@ -470,6 +471,10 @@ async def join_secret_chat(message: Message, pw_hash: str):
     active_sessions[uid] = pw_hash
 
     if len(room["users"]) == 1:
+        try:
+            await message.delete()
+        except Exception:
+            pass
         await message.answer(
             "🔐 <b>You've entered the secret chat room.</b>\n\n"
             "⏳ Waiting for your partner to enter the same code...\n\n"
@@ -487,6 +492,10 @@ async def join_secret_chat(message: Message, pw_hash: str):
             pass
     else:
         partner_id = room["users"][0]
+        try:
+            await message.delete()
+        except Exception:
+            pass
         await message.answer(
             "🔐 <b>Chat started!</b>\n\n"
             "💬 Send a message — it goes straight to your partner\n"

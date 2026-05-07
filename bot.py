@@ -457,15 +457,6 @@ async def universal_handler(message: Message):
 # ════════════════════════════════════════════════════════════════
 #  SECRET CHAT — JOIN
 # ════════════════════════════════════════════════════════════════
-async def _delayed_delete(chat_id: int, msg_id: int, delay: float = 0.8):
-    """Delete a single message after a short delay (keyboard restore trick)."""
-    await asyncio.sleep(delay)
-    try:
-        await bot.delete_message(chat_id, msg_id)
-    except Exception:
-        pass
-
-
 async def close_chat(uid: int, reason: str = "left"):
     """
     Cleanly close the secret chat for uid (and their partner).
@@ -492,9 +483,7 @@ async def close_chat(uid: int, reason: str = "left"):
             pairs[pw_hash]["users"] = []
         await delete_chat_messages(partner_id)
         try:
-            # Send empty keyboard-restore message then delete it silently
-            restore = await bot.send_message(partner_id, "🎵", reply_markup=main_kb())
-            asyncio.create_task(_delayed_delete(partner_id, restore.message_id))
+            await bot.send_message(partner_id, "🎵", reply_markup=main_kb())
         except Exception:
             pass
 
@@ -502,8 +491,7 @@ async def close_chat(uid: int, reason: str = "left"):
     last_activity.pop(uid, None)
     await delete_chat_messages(uid)
     try:
-        restore = await bot.send_message(uid, "🎵", reply_markup=main_kb())
-        asyncio.create_task(_delayed_delete(uid, restore.message_id))
+        await bot.send_message(uid, "🎵", reply_markup=main_kb())
     except Exception:
         pass
 

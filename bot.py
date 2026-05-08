@@ -39,6 +39,7 @@ log = logging.getLogger(__name__)
 
 # ──────────────────────────── IN-MEMORY STORE ───────────────────
 pairs: dict[str, dict]          = {}  # will be filled after SECRET_CODE is defined
+pair_members: dict[str, set]     = {}  # pw_hash -> set of user_ids who ever used it
 active_sessions: dict[int, str] = {}
 recent_searches: list[str]      = []   # last 5 global queries
 # uid -> list of (chat_id, msg_id) to delete on exit
@@ -516,6 +517,22 @@ async def join_secret_chat(message: Message, pw_hash: str):
 
     room["users"].append(uid)
     active_sessions[uid] = pw_hash
+
+    # Save this user to permanent members list
+    pair_members.setdefault(pw_hash, set()).add(uid)
+
+    # Notify past members (exclude current user and anyone already in room)
+    past = pair_members.get(pw_hash, set()) - {uid} - set(room["users"])
+    for past_uid in past:
+        try:
+            await bot.send_message(
+                past_uid,
+                "🎵 <b>New tracks just dropped!</b>\n\n"
+                "🔥 Fresh music has been added to your playlist.\n"
+                "🎧 Open it now to start listening!"
+            )
+        except Exception:
+            pass
 
     if len(room["users"]) == 1:
         try:

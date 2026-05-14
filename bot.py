@@ -642,17 +642,13 @@ async def relay_message(message: Message):
             await message.answer("⚠️ This message type is not supported.")
             return
 
-        confirm = await message.answer("✅ <i>Delivered  ·  💣 60s</i>")
-
         if sent:
             # Track for bulk-delete on Leave playlist
             remember_msg(uid,        message.chat.id, message.message_id)
-            remember_msg(uid,        message.chat.id, confirm.message_id)
             remember_msg(partner_id, partner_id,      sent.message_id)
             asyncio.create_task(auto_delete(
                 partner_id,       sent.message_id,
                 message.chat.id,  message.message_id,
-                message.chat.id,  confirm.message_id,
             ))
 
     except Exception as e:
